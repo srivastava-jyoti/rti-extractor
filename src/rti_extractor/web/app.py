@@ -6,10 +6,12 @@ from fastapi import FastAPI, Request, UploadFile
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
+from ..config import get_settings
 from ..extract.client import extract_from_images, extract_from_text
 from ..extract.schema import DataStatus
 from ..logging import log, setup_logging
 from ..pdf.reader import TextLayer, inspect, render_pages
+from ..strapi.client import build_component, create_budget_rti_draft
 
 BASE_DIR = Path(__file__).parent
 WORK_DIR = Path("data/work")
@@ -70,17 +72,25 @@ async def do_extract(request: Request, pdf: UploadFile) -> HTMLResponse:
 
 @app.post("/submit", response_class=HTMLResponse)
 async def submit(request: Request) -> HTMLResponse:
-    """Take the reviewer's corrected values. Writing to Strapi comes next."""
+    """Take the reviewer's corrected values and create a Budget-RTI draft."""
     form = await request.form()
-    rows = [
-        {
-            "label": label,
-            "number": str(form.get(f"{key}__number", "")),
-            "status": str(form.get(f"{key}__status", "")),
-            "other_specify": str(form.get(f"{key}__other_specify", "")),
-        }
-        for key, label in QUESTIONS.items()
-    ]
+
+    rows: list[dict[str, str]] = []
+    fields: dict[str, dict[str, Any]] = {}
+
+    for key, label in QUESTIONS.items():
+        number = str(form.get(f"{key}__number", ""))
+        status = str(form.get(f"{key}__status", ""))
+        other = str(form.get(f"{key}__other_specify", ""))
+        rows.append({"label": label, "number": number, "status": status, "other_specify": other})
+        fields[key] = build_component(number, status, other)
+
     sha = str(form.get("sha", ""))
-    log.info("submitted", sha256=sha[:16])
-    return templates.TemplateResponse(request, "done.html", {"rows": rows, "sha": sha})
+    entry_id = create_budget_rti_draft(fields)
+    log.info("submitted", sha256=sha[:16], entry_id=entry_id)
+
+    return templates.TemplateResponse(
+        request,
+        "done.html",
+        {"rows": rows, "sha": sha, "entry_id": entry_id, "dry_run": get_settings().dry_run},
+    )
