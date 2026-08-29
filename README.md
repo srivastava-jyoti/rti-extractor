@@ -17,7 +17,7 @@ answer, decided whether it counted as a real value or a refusal, and typed it in
 one field at a time. The same work repeated for every reply received, for every question
 set, across thirty question sets and thousands of documents. The transcription is also
 where inconsistency entered the data: two people looking at the same qualified figure —
-"Rs. 19,800 (Minimum)" — recorded it differently, and nothing in the CMS captured which
+"Rs. 24,500 (approx.)" — recorded it differently, and nothing in the CMS captured which
 convention had been applied.
 
 ## What it does now
@@ -62,18 +62,41 @@ The signal that separates NATIVE from OCR is whether a single image covers most 
 A genuinely typed document has no photograph of itself inside it; a full-page image sitting
 behind a text layer is the fingerprint of a scan someone has run OCR over.
 
+### Reading rendered pages as images, not OCR text
+
+The conventional approach is to OCR the document to a character stream and then locate
+values with regular expressions or positional heuristics. That flattens the page. These
+replies are tables, and a figure's meaning comes entirely from its row and column position —
+the same number means one institution's staff count or another's depending on which line it
+sits on. A character stream has no way to represent that.
+
+A vision-language model reads the rendered page directly, so the layout survives. That is
+what allows a value to be attributed to the correct institution in a multi-row table, and
+what makes a page number and a verbatim snippet meaningful when a reviewer checks it.
+
+It is also why the OCR text layer described above is discarded rather than repaired. The
+problem is not only that individual characters are wrong. Even with every character correct,
+a linear stream cannot express which reply belongs to which question.
+
 ### Schema-constrained generation, not prompt-and-parse
 
 The model is not asked to return JSON and then parsed. The answer schema is supplied to the
 API as a structured-output constraint, so the response is generated against the schema
-rather than merely encouraged to match it. The result is then validated a second time
-locally before anything is written.
+rather than merely encouraged to match it. This is the same underlying machinery as function
+calling or tool use: the model is given a typed signature and generation is constrained to
+satisfy it, rather than the schema being a suggestion in the prompt. The result is then
+validated a second time locally before anything is written.
 
 Prompt-and-parse fails in ways that are tedious and unbounded: prose wrapped around the
 JSON, a missing field, a number returned as `"approximately 450"`. Each becomes a parser
 special case. Constraining generation removes the class of failure instead of handling its
 instances, and the local validation means a malformed response fails loudly at the boundary
 rather than reaching the CMS.
+
+The schema and its per-field descriptions are generated programmatically from the Pydantic
+model rather than written by hand into the prompt. That is what makes roadmap item 2 a
+configuration change rather than a rewrite: a new question set becomes a new model
+definition, and the prompt, the response constraint and the CMS payload all follow from it.
 
 ### Per-field provenance: page number, verbatim snippet, unit as printed
 
@@ -85,11 +108,11 @@ slower than transcribing by hand. Shown the number next to the sentence it came 
 can confirm or reject it in seconds. The provenance is what converts the reviewer's job from
 transcription to verification.
 
-The unit field exists for a specific hazard. One reply states a figure with a header reading
-"Rupees in lac"; another states a figure in plain rupees. Stored as bare numbers they differ
-by a factor of a hundred thousand with nothing recording why. The system records the unit as
-printed and does not reconcile it — the discrepancy surfaces in review rather than settling
-silently into the data.
+The unit field exists for a specific hazard. One reply states its figures under a header
+indicating that amounts are given in lakhs; another states them in plain rupees. Stored as
+bare numbers they differ by a factor of a hundred thousand with nothing recording why. The
+system records the unit as printed and does not reconcile it — the discrepancy surfaces in
+review rather than settling silently into the data.
 
 ### The model may not calculate, convert, or infer
 
@@ -175,7 +198,9 @@ percentage is claimed until that exists.
 
 One caveat that measurement will have to account for: the existing entries were transcribed
 by different people using different conventions, so disagreement with them will not always
-indicate an extraction error.
+indicate an extraction error. Those discrepancies are useful output in their own right,
+because they surface inconsistencies in already-published data rather than only grading the
+extractor.
 
 ## Architecture
 
@@ -252,6 +277,7 @@ indicate an extraction error.
 2. **Schema generation at runtime.** Read the field definitions and question wording from the CMS rather than hardcoding them, so a new question set is configuration rather than code.
 3. **Multi-record documents.** Some replies answer for many institutions in one table, producing many records from one file. This needs list output, joining across several tables in the same document, and a table-based review screen.
 4. **Automated evaluation harness.** Ground-truth fixtures and a diff between runs, so a prompt change can be judged by measurement rather than by eye.
+5. **Self-consistency verification.** Numeric fields would be extracted twice in independent passes, with disagreement setting the value aside and flagging it for review rather than choosing between the two readings. Confidence scores are the model's own self-report and are not calibrated against measured error, whereas agreement between two independent passes is a stronger signal — and this is the control that catches a confident misreading in a misaligned table row.
 
 ## Setup
 
@@ -275,7 +301,6 @@ cp .env.example .env
 | `GEMINI_MODEL` | Model identifier, for example a Gemini Flash model |
 | `STRAPI_BASE_URL` | CMS API root, for example `http://localhost:1337/api` |
 | `STRAPI_API_TOKEN` | CMS token with create permission on the target collection |
-| `DATABASE_URL` | Currently required by configuration validation but unused |
 | `WORK_DIR` | Where rendered pages and uploads are written. Default `./data/work` |
 | `LOG_LEVEL` | Default `INFO` |
 | `DRY_RUN` | Defaults to `true`. When true the CMS payload is logged and nothing is written |
