@@ -11,7 +11,7 @@ from ..extract.client import extract_from_images, extract_from_text
 from ..extract.schema import DataStatus
 from ..logging import log, setup_logging
 from ..pdf.reader import TextLayer, inspect, render_pages
-from ..strapi.client import build_component, create_budget_rti_draft
+from ..strapi.client import build_component, create_budget_rti_draft, strapi_entry_url
 
 BASE_DIR = Path(__file__).parent
 WORK_DIR = Path("data/work")
@@ -89,8 +89,15 @@ async def submit(request: Request) -> HTMLResponse:
     entry_id = create_budget_rti_draft(fields)
     log.info("submitted", sha256=sha[:16], entry_id=entry_id)
 
+    settings = get_settings()
     return templates.TemplateResponse(
         request,
         "done.html",
-        {"rows": rows, "sha": sha, "entry_id": entry_id, "dry_run": get_settings().dry_run},
+        {
+            "rows": rows,
+            "sha": sha,
+            "entry_id": entry_id,
+            "dry_run": settings.dry_run,
+            "entry_url": strapi_entry_url(entry_id) if entry_id else None,
+        },
     )

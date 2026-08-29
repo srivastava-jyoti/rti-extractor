@@ -4,9 +4,26 @@
   <h1>Answers confirmed</h1>
   <p class="sub">Document fingerprint {{ sha[:16] }}&hellip;</p>
 
-  <div class="banner">
-    These are the values you approved. Writing them into Strapi is the next piece to build.
-  </div>
+  {% if dry_run %}
+    <div class="banner">
+      <strong>Practice mode.</strong> Nothing was written to Strapi. Set
+      <code>DRY_RUN=false</code> to create real drafts.
+    </div>
+  {% elif entry_url %}
+    <div class="banner" style="background:#eef7f0;border-color:#c6e2cd;color:var(--accent)">
+      <strong>Draft created in Strapi &mdash; entry {{ entry_id }}.</strong>
+      It is unpublished, so it is not live anywhere yet.
+      <p style="margin:10px 0 0">
+        <a href="{{ entry_url }}" target="_blank" rel="noopener">
+          Open it in Strapi to check and publish &rarr;
+        </a>
+      </p>
+    </div>
+  {% else %}
+    <div class="banner">
+      Saved, but no entry id came back from Strapi. Check the server log.
+    </div>
+  {% endif %}
 
   {% for row in rows %}
     <div class="card">
