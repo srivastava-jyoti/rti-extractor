@@ -1,6 +1,10 @@
 from enum import StrEnum
+from functools import lru_cache
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, create_model
+
+from ..rti_type import AnswerType, RtiTypeDef
 
 
 class DataStatus(StrEnum):
@@ -37,10 +41,29 @@ class Answer(BaseModel):
     )
 
 
-class BudgetRtiAnswers(BaseModel):
-    annual_budget_for_prisons: Answer
-    break_up_for_budget: Answer
-    sanctioned_individual_cost: Answer
-    annual_individual_cost_sanctioned: Answer
-    incurred_individual_cost: Answer
-    annual_individual_cost_incurred: Answer
+class TextAnswer(Answer):
+    """For questions whose answer is words rather than a figure."""
+
+    number: float | None = Field(
+        default=None,
+        description="Unused for this question. Put the answer in other_specify.",
+    )
+
+
+ANSWER_MODELS: dict[AnswerType, type[Answer]] = {
+    AnswerType.NUMBER: Answer,
+    AnswerType.TEXT: TextAnswer,
+}
+
+
+@lru_cache
+def build_answers_model(rti_type: RtiTypeDef) -> type[BaseModel]:
+    """Build the answer schema for one RTI type from its field definitions.
+
+    One field per question, each holding the same value/status/provenance shape. Cached
+    so the same class object is reused across calls.
+    """
+    definitions: dict[str, Any] = {
+        field.name: (ANSWER_MODELS[field.answer_type], ...) for field in rti_type.fields
+    }
+    return create_model(rti_type.model_name, **definitions)
