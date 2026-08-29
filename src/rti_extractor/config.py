@@ -10,7 +10,6 @@ class Settings(BaseSettings):
 
     gemini_api_key: str
     gemini_model: str
-    database_url: str
     strapi_base_url: str
     strapi_api_token: str = ""
     work_dir: Path = Path("./data/work")
