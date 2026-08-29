@@ -1,9 +1,10 @@
 import hashlib
+import re
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from ..config import get_settings
@@ -11,7 +12,12 @@ from ..extract.client import extract_from_images, extract_from_text
 from ..extract.schema import DataStatus
 from ..logging import log, setup_logging
 from ..pdf.reader import TextLayer, inspect, render_pages
-from ..strapi.client import build_component, create_budget_rti_draft, strapi_entry_url
+from ..strapi.client import (
+    build_component,
+    create_budget_rti_draft,
+    find_rti_form,
+    strapi_entry_url,
+)
 
 BASE_DIR = Path(__file__).parent
 WORK_DIR = Path("data/work")
@@ -37,6 +43,17 @@ async def home(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "upload.html", {})
 
 
+@app.get("/pdf/{sha}")
+async def serve_pdf(sha: str) -> FileResponse:
+    """Serve back the scan that was uploaded, so it can be checked without hunting for it."""
+    if not re.fullmatch(r"[0-9a-f]{64}", sha):
+        raise HTTPException(status_code=404, detail="Not found")
+    path = UPLOAD_DIR / f"{sha}.pdf"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(path, media_type="application/pdf", content_disposition_type="inline")
+
+
 @app.post("/extract", response_class=HTMLResponse)
 async def do_extract(request: Request, pdf: UploadFile) -> HTMLResponse:
     """Take an uploaded PDF, extract the six answers, and show them for checking."""
@@ -49,6 +66,8 @@ async def do_extract(request: Request, pdf: UploadFile) -> HTMLResponse:
 
     info = inspect(stored)
     log.info("upload", filename=pdf.filename, sha256=digest[:16], layer=info.text_layer.value)
+
+    form_match = find_rti_form(pdf.filename) if pdf.filename else None
 
     if info.text_layer is TextLayer.NATIVE:
         answers = extract_from_text("\n\n".join(info.text_by_page))
@@ -66,6 +85,7 @@ async def do_extract(request: Request, pdf: UploadFile) -> HTMLResponse:
             for key, label in QUESTIONS.items()
         ],
         "statuses": [status.value for status in DataStatus],
+        "form": form_match,
     }
     return templates.TemplateResponse(request, "review.html", context)
 
@@ -86,8 +106,11 @@ async def submit(request: Request) -> HTMLResponse:
         fields[key] = build_component(number, status, other)
 
     sha = str(form.get("sha", ""))
-    entry_id = create_budget_rti_draft(fields)
-    log.info("submitted", sha256=sha[:16], entry_id=entry_id)
+    raw_form_id = str(form.get("rti_form_id", "")).strip()
+    rti_form_id = int(raw_form_id) if raw_form_id.isdigit() else None
+
+    entry_id = create_budget_rti_draft(fields, rti_form_id=rti_form_id)
+    log.info("submitted", sha256=sha[:16], entry_id=entry_id, rti_form_id=rti_form_id)
 
     settings = get_settings()
     return templates.TemplateResponse(

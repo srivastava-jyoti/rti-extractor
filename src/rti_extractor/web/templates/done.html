@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Saved — RTI Extractor{% endblock %}
 {% block body %}
+  <p style="margin:0 0 14px">
+    <a href="/">&larr; Upload another scan</a>
+    &nbsp;&middot;&nbsp;
+    <a href="/pdf/{{ sha }}" target="_blank" rel="noopener">View this scan &nearr;</a>
+  </p>
+
   <h1>Answers confirmed</h1>
   <p class="sub">Document fingerprint {{ sha[:16] }}&hellip;</p>
 
