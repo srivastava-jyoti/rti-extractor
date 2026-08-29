@@ -12,9 +12,10 @@ from ..extract.client import extract_from_images, extract_from_text
 from ..extract.schema import DataStatus
 from ..logging import log, setup_logging
 from ..pdf.reader import TextLayer, inspect, render_pages
+from ..rti_type import get_rti_type
 from ..strapi.client import (
     build_component,
-    create_budget_rti_draft,
+    create_draft,
     find_rti_form,
     strapi_entry_url,
 )
@@ -25,14 +26,9 @@ UPLOAD_DIR = WORK_DIR / "uploads"
 
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-QUESTIONS: dict[str, str] = {
-    "annual_budget_for_prisons": "1. Total annual budget for prisons",
-    "break_up_for_budget": "2. Major heads / break-up of that total",
-    "sanctioned_individual_cost": "3. Sanctioned cost per prisoner, per month",
-    "annual_individual_cost_sanctioned": "4. Sanctioned cost per prisoner, per year",
-    "incurred_individual_cost": "5. Incurred cost per prisoner, per month",
-    "annual_individual_cost_incurred": "6. Incurred cost per prisoner, per year",
-}
+# Only one RTI type is implemented. Type detection is not in scope yet.
+RTI_TYPE = get_rti_type("budget-rti")
+QUESTIONS: dict[str, str] = RTI_TYPE.labels
 
 setup_logging()
 app = FastAPI(title="RTI Extractor")
@@ -67,13 +63,13 @@ async def do_extract(request: Request, pdf: UploadFile) -> HTMLResponse:
     info = inspect(stored)
     log.info("upload", filename=pdf.filename, sha256=digest[:16], layer=info.text_layer.value)
 
-    form_match = find_rti_form(pdf.filename) if pdf.filename else None
+    form_match = find_rti_form(RTI_TYPE, pdf.filename) if pdf.filename else None
 
     if info.text_layer is TextLayer.NATIVE:
-        answers = extract_from_text("\n\n".join(info.text_by_page))
+        answers = extract_from_text(RTI_TYPE, "\n\n".join(info.text_by_page))
     else:
         pages = render_pages(stored, WORK_DIR / digest[:16])
-        answers = extract_from_images(pages)
+        answers = extract_from_images(RTI_TYPE, pages)
 
     context: dict[str, Any] = {
         "filename": pdf.filename,
@@ -109,7 +105,7 @@ async def submit(request: Request) -> HTMLResponse:
     raw_form_id = str(form.get("rti_form_id", "")).strip()
     rti_form_id = int(raw_form_id) if raw_form_id.isdigit() else None
 
-    entry_id = create_budget_rti_draft(fields, rti_form_id=rti_form_id)
+    entry_id = create_draft(RTI_TYPE, fields, rti_form_id=rti_form_id)
     log.info("submitted", sha256=sha[:16], entry_id=entry_id, rti_form_id=rti_form_id)
 
     settings = get_settings()
@@ -121,6 +117,6 @@ async def submit(request: Request) -> HTMLResponse:
             "sha": sha,
             "entry_id": entry_id,
             "dry_run": settings.dry_run,
-            "entry_url": strapi_entry_url(entry_id) if entry_id else None,
+            "entry_url": strapi_entry_url(RTI_TYPE, entry_id) if entry_id else None,
         },
     )

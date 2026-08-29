@@ -6,6 +6,7 @@ import httpx
 from ..config import get_settings
 from ..extract.schema import DataStatus
 from ..logging import log
+from ..rti_type import RtiTypeDef
 
 STATUS_TO_STRAPI: dict[DataStatus, str] = {
     DataStatus.AVAILABLE: "Data Available ",
@@ -38,10 +39,10 @@ def build_component(number: str, status: str, other_specify: str) -> dict[str, A
     }
 
 
-def create_budget_rti_draft(
-    fields: dict[str, dict[str, Any]], rti_form_id: int | None = None
+def create_draft(
+    rti_type: RtiTypeDef, fields: dict[str, dict[str, Any]], rti_form_id: int | None = None
 ) -> int | None:
-    """Create an unpublished Budget-RTI entry, linked to its RTI Form when we know it."""
+    """Create an unpublished entry, linked to its RTI Form when we know it."""
     settings = get_settings()
     data: dict[str, Any] = {**fields, "publishedAt": None}
     if rti_form_id is not None:
@@ -49,10 +50,10 @@ def create_budget_rti_draft(
     payload = {"data": data}
 
     if settings.dry_run:
-        log.info("strapi_dry_run", payload=payload)
+        log.info("strapi_dry_run", rti_type=rti_type.slug, payload=payload)
         return None
 
-    url = f"{settings.strapi_base_url.rstrip('/')}/budget-rtis"
+    url = f"{settings.strapi_base_url.rstrip('/')}/{rti_type.collection}"
     headers = {"Authorization": f"Bearer {settings.strapi_api_token}"}
 
     with httpx.Client(timeout=30.0) as client:
@@ -75,11 +76,12 @@ class RtiFormMatch:
     rti_name: str
     memo_number: str | None
     response_date: str | None
-    existing_budget_rti_id: int | None
+    existing_entry_id: int | None
+    """An entry of this RTI type already attached to the form, if there is one."""
 
     @property
     def is_free(self) -> bool:
-        return self.existing_budget_rti_id is None
+        return self.existing_entry_id is None
 
 
 def _get(path: str, params: dict[str, str]) -> dict[str, Any]:
@@ -93,14 +95,15 @@ def _get(path: str, params: dict[str, str]) -> dict[str, Any]:
     return payload
 
 
-def find_rti_form(filename: str) -> RtiFormMatch | None:
+def find_rti_form(rti_type: RtiTypeDef, filename: str) -> RtiFormMatch | None:
     """Find the RTI Form this scan is already attached to. None if there is no match."""
     stem = filename.rsplit(".", 1)[0]
+    relation = rti_type.relation_field
     for field, value in (("hash", stem), ("name", filename)):
         try:
             payload = _get(
                 "/rti-forms",
-                {f"filters[Scanned_files][{field}][$eq]": value, "populate": "budget_rti"},
+                {f"filters[Scanned_files][{field}][$eq]": value, "populate": relation},
             )
         except httpx.HTTPError as exc:
             log.warning("rti_form_lookup_failed", field=field, error=str(exc)[:120])
@@ -112,13 +115,13 @@ def find_rti_form(filename: str) -> RtiFormMatch | None:
 
         item = items[0]
         attrs: dict[str, Any] = item.get("attributes") or {}
-        existing = (attrs.get("budget_rti") or {}).get("data")
+        existing = (attrs.get(relation) or {}).get("data")
         match = RtiFormMatch(
             id=int(item["id"]),
             rti_name=str(attrs.get("RTI_Name") or "(unnamed form)"),
             memo_number=attrs.get("RTI_memo_number"),
             response_date=attrs.get("Date_of_RTI_Response"),
-            existing_budget_rti_id=int(existing["id"]) if existing else None,
+            existing_entry_id=int(existing["id"]) if existing else None,
         )
         log.info("rti_form_matched", form_id=match.id, on=field, free=match.is_free)
         return match
@@ -127,8 +130,7 @@ def find_rti_form(filename: str) -> RtiFormMatch | None:
     return None
 
 
-def strapi_entry_url(entry_id: int) -> str:
-    """Link straight to one Budget-RTI entry in the Strapi admin."""
+def strapi_entry_url(rti_type: RtiTypeDef, entry_id: int) -> str:
+    """Link straight to one entry in the Strapi admin."""
     base = get_settings().strapi_base_url.rstrip("/").removesuffix("/api")
-    collection = "api::budget-rti.budget-rti"
-    return f"{base}/admin/content-manager/collection-types/{collection}/{entry_id}"
+    return f"{base}/admin/content-manager/collection-types/{rti_type.api_uid}/{entry_id}"
