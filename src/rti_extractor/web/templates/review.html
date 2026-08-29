@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Check the answers — RTI Extractor{% endblock %}
+{% block body %}
+  <h1>Check before saving</h1>
+  <p class="sub">
+    <strong>{{ filename }}</strong>
+    &middot; {{ page_count }} page{{ '' if page_count == 1 else 's' }}
+    &middot; {{ text_layer }}
+  </p>
+
+  <div class="banner">
+    Every value below was read by the model. Correct anything that is wrong &mdash; the
+    quoted text under each answer shows exactly what it read.
+  </div>
+
+  <form action="/submit" method="post">
+    <input type="hidden" name="sha" value="{{ sha }}">
+
+    {% for row in rows %}
+      {% set a = row.answer %}
+      <div class="card">
+        <h2>{{ row.label }}</h2>
+        <div class="grid">
+          <div>
+            <label for="{{ row.key }}__number">Number</label>
+            <input type="text" id="{{ row.key }}__number" name="{{ row.key }}__number"
+                   value="{{ '' if a.number is none else a.number }}">
+          </div>
+          <div>
+            <label for="{{ row.key }}__status">Status</label>
+            <select id="{{ row.key }}__status" name="{{ row.key }}__status">
+              {% for s in statuses %}
+                <option value="{{ s }}" {% if s == a.status.value %}selected{% endif %}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="full">
+            <label for="{{ row.key }}__other_specify">If not a single figure</label>
+            <textarea id="{{ row.key }}__other_specify"
+                      name="{{ row.key }}__other_specify">{{ a.other_specify or '' }}</textarea>
+          </div>
+        </div>
+
+        <div class="evidence">
+          {% if a.page %}<span class="pill">page {{ a.page }}</span>{% endif %}
+          {% if a.unit_as_printed %}<span class="pill">unit: {{ a.unit_as_printed }}</span>{% endif %}
+          {% if not a.page and not a.unit_as_printed %}<span class="pill">nothing found</span>{% endif %}
+          {% if a.snippet %}<blockquote>{{ a.snippet }}</blockquote>{% endif %}
+        </div>
+      </div>
+    {% endfor %}
+
+    <button type="submit">Save these answers</button>
+    <p class="sub" style="margin-top:14px">
+      Nothing is written to Strapi yet &mdash; that step comes next.
+    </p>
+  </form>
+{% endblock %}

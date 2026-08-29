@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block body %}
+  <h1>Budget RTI Extractor</h1>
+  <p class="sub">Upload a scanned Budget RTI reply. The six answers are read out and shown
+    for you to check before anything is saved.</p>
+
+  <div class="card">
+    <form action="/extract" method="post" enctype="multipart/form-data" id="f">
+      <label for="pdf">RTI reply (PDF)</label>
+      <input type="file" id="pdf" name="pdf" accept="application/pdf" required>
+      <p class="sub" style="margin:14px 0 18px">
+        Scanned documents take longer, roughly 10&ndash;60 seconds depending on page count.
+      </p>
+      <button type="submit" id="go">Extract answers</button>
+    </form>
+  </div>
+
+  <script>
+    document.getElementById('f').addEventListener('submit', function () {
+      var b = document.getElementById('go');
+      b.disabled = true;
+      b.textContent = 'Reading the document…';
+    });
+  </script>
+{% endblock %}

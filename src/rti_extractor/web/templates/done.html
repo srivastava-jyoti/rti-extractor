@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Saved — RTI Extractor{% endblock %}
+{% block body %}
+  <h1>Answers confirmed</h1>
+  <p class="sub">Document fingerprint {{ sha[:16] }}&hellip;</p>
+
+  <div class="banner">
+    These are the values you approved. Writing them into Strapi is the next piece to build.
+  </div>
+
+  {% for row in rows %}
+    <div class="card">
+      <h2>{{ row.label }}</h2>
+      <div class="grid">
+        <div><label>Number</label>{{ row.number or '—' }}</div>
+        <div><label>Status</label>{{ row.status }}</div>
+        {% if row.other_specify %}
+          <div class="full"><label>Detail</label>{{ row.other_specify }}</div>
+        {% endif %}
+      </div>
+    </div>
+  {% endfor %}
+
+  <p><a href="/">Upload another document</a></p>
+{% endblock %}
