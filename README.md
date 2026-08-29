@@ -252,6 +252,66 @@ extractor.
 | `strapi/client.py` | Find the target CMS record, map answers to the CMS payload, create the draft |
 | `web/app.py` | Upload, review and confirmation screens; serves the uploaded scan back for checking |
 
+### What happens on upload
+
+**1. The file arrives.** The PDF is posted to `/extract`, read into memory, and a SHA-256
+fingerprint is taken of its bytes. That fingerprint is the filename it is stored under. Two
+consequences: the same document uploaded twice occupies the same path rather than
+duplicating, and the fingerprint is a safe identifier to put in a URL, which is how the
+scan is served back to the reviewer.
+
+**2. The PDF is inspected.** One pass with PyMuPDF collects, per page, the text, the
+rotation flag, the page dimensions and the bounding boxes of any images. The classification
+then applies in order:
+
+```
+total characters <= 100 x page count      ->  NONE    (no usable text)
+otherwise, any image covering >60% of a
+        page's area                       ->  OCR     (text present, but from a scan)
+otherwise                                 ->  NATIVE  (real digital text)
+```
+
+The character floor exists because scans often carry a stray watermark or page number;
+treating that as text would skip extraction on a document nobody can read.
+
+**3. The target record is looked up.** Before extraction, the uploaded filename is used to
+find where the scan already belongs. The extension is stripped and the stem is sent as a
+filter on the CMS's attached-media field. The CMS stores a sanitised version of every
+uploaded filename, and files downloaded from it carry exactly that name, so this is an exact
+match rather than fuzzy matching. If the stem finds nothing, the original filename is tried.
+One request returns the record, its identifying fields, and whether it already has an entry
+of this type.
+
+**4. Extraction.** NATIVE documents have their page text joined and sent as text. OCR and
+NONE documents have every page rendered to PNG at 200 DPI and sent as images in page order —
+roughly 1,100 tokens per page, against under a thousand for a short text document. Either
+way the request carries the instructions, the content, the schema as a generation
+constraint, and `temperature=0`. Transient failures — upstream overload, rate limiting — are
+retried with increasing waits up to five attempts; anything else fails immediately, because
+a bad key or a wrong model identifier will not succeed on retry. Token counts are logged on
+every call. The response is validated locally against the same schema before it goes
+further.
+
+**5. The review screen.** Six cards, each with an editable value, status and free-text field,
+and beneath them the page number, the unit as printed, and the verbatim snippet. Two hidden
+fields travel with the form: the document fingerprint, and the target record ID — and the
+record ID is included **only** when that record has no entry yet. Nothing is persisted at
+this stage; the extracted values live in the form itself.
+
+**6. Saving.** Each value is cleaned — separators and currency prefixes stripped, converted
+to a number or left empty if it will not convert — and the status is mapped to the exact
+string the CMS expects. The payload is assembled with the publish timestamp set to null,
+plus the record ID when present. If `DRY_RUN` is on, the payload is logged and nothing is
+sent. Otherwise one request creates the entry and returns its identifier, which becomes the
+link on the confirmation screen.
+
+A one-page scan takes about nine seconds end to end, most of it the model call; longer
+documents scale roughly with page count.
+
+Two guarantees in that path are structural rather than enforced by a check: the publish
+timestamp is always null, so nothing can be published, and the record ID is absent whenever
+linking would displace an existing entry, so nothing can be detached.
+
 ## Stack
 
 - **Python 3.12** — pinned below 3.13 because the imaging and PDF libraries lag new releases.
