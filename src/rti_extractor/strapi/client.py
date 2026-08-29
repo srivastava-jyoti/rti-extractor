@@ -59,3 +59,10 @@ def create_budget_rti_draft(fields: dict[str, dict[str, Any]]) -> int | None:
     entry_id = int(response.json()["data"]["id"])
     log.info("strapi_created", entry_id=entry_id)
     return entry_id
+
+
+def strapi_entry_url(entry_id: int) -> str:
+    """Link straight to one Budget-RTI entry in the Strapi admin."""
+    base = get_settings().strapi_base_url.rstrip("/").removesuffix("/api")
+    collection = "api::budget-rti.budget-rti"
+    return f"{base}/admin/content-manager/collection-types/{collection}/{entry_id}"
