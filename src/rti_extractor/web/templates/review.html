@@ -1,12 +1,51 @@
 {% extends "base.html" %}
 {% block title %}Check the answers — RTI Extractor{% endblock %}
 {% block body %}
+  <p style="margin:0 0 14px"><a href="/">&larr; Upload a different scan</a></p>
+
   <h1>Check before saving</h1>
   <p class="sub">
     <strong>{{ filename }}</strong>
     &middot; {{ page_count }} page{{ '' if page_count == 1 else 's' }}
     &middot; {{ text_layer }}
   </p>
+
+  <p style="margin:0 0 20px">
+    <a href="/pdf/{{ sha }}" target="_blank" rel="noopener"
+       style="display:inline-block;padding:9px 16px;border:1px solid var(--line);
+              border-radius:7px;background:var(--card);text-decoration:none;font-size:15px">
+      View the scan &nearr;
+    </a>
+    <span style="color:var(--muted);font-size:14px;margin-left:10px">
+      opens in a new tab, so you can put it beside this page
+    </span>
+  </p>
+
+  {% if form and form.is_free %}
+    <div class="banner" style="background:#eef7f0;border-color:#c6e2cd;color:var(--accent)">
+      <strong>Matched to an existing RTI Form &mdash; #{{ form.id }}</strong>
+      <p style="margin:6px 0 0;color:var(--ink)">{{ form.rti_name }}</p>
+      <p style="margin:4px 0 0;font-size:13px;color:var(--muted)">
+        {% if form.memo_number %}Memo {{ form.memo_number }}{% endif %}
+        {% if form.response_date %} &middot; replied {{ form.response_date }}{% endif %}
+        &middot; these answers will be attached to it
+      </p>
+    </div>
+  {% elif form %}
+    <div class="banner" style="background:#fdeeee;border-color:#e8bcbc;color:var(--danger)">
+      <strong>That form already has a Budget-RTI entry (#{{ form.existing_budget_rti_id }}).</strong>
+      <p style="margin:6px 0 0;color:var(--ink)">{{ form.rti_name }}</p>
+      <p style="margin:4px 0 0;font-size:13px;color:var(--muted)">
+        Saving will create a new unlinked draft rather than replace the existing one.
+      </p>
+    </div>
+  {% else %}
+    <div class="banner">
+      <strong>No matching RTI Form found for this file.</strong>
+      Saving will create a draft that is not attached to anything, and someone will need
+      to link it by hand in Strapi.
+    </div>
+  {% endif %}
 
   <div class="banner">
     Every value below was read by the model. Correct anything that is wrong &mdash; the
@@ -15,6 +54,9 @@
 
   <form action="/submit" method="post">
     <input type="hidden" name="sha" value="{{ sha }}">
+    {% if form and form.is_free %}
+      <input type="hidden" name="rti_form_id" value="{{ form.id }}">
+    {% endif %}
 
     {% for row in rows %}
       {% set a = row.answer %}
