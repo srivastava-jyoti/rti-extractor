@@ -1,343 +1,131 @@
 # RTI Extractor
 
-Reads scanned government Right to Information replies and turns them into structured,
-reviewable draft entries in a Strapi CMS.
+Reads scanned government Right to Information replies and creates structured, reviewable
+draft entries in a Strapi CMS.
 
 ## The problem
 
-An Indian NGO publishes prison data obtained through Right to Information (RTI) requests.
-It files a standard set of questions with prison departments across the country; each
-department replies by post or email with a scanned document. The replies arrive as
-photocopies of typed pages, pages rotated inside an upright PDF, 1-bit black-and-white
-scans with no greyscale left, and occasionally clean digital documents. Quality varies by
-state and by office.
+An Indian NGO publishes prison data obtained through Right to Information requests. It files
+a standard set of questions with prison departments, and each department replies with a
+scanned document. The scans vary: photocopies, pages rotated inside an upright PDF, 1-bit
+black-and-white with no greyscale left, and occasionally a clean digital file.
 
-Until now, every reply was transcribed by hand. A person opened the scan, found each
-answer, decided whether it counted as a real value or a refusal, and typed it into the CMS
-one field at a time. The same work repeated for every reply received, for every question
-set, across thirty question sets and thousands of documents. The transcription is also
-where inconsistency entered the data: two people looking at the same qualified figure —
-"Rs. 24,500 (approx.)" — recorded it differently, and nothing in the CMS captured which
-convention had been applied.
+Until now a person opened each reply, found each answer, and typed it into the CMS field by
+field. That work repeated across thirty question sets and thousands of documents.
 
-## What it does now
+## How it works
 
 1. A reviewer uploads one scanned reply.
-2. The system classifies the PDF: real digital text, unreliable OCR text, or pure scan.
-3. It reads the answers — from the document's own text where that is trustworthy,
-   otherwise from rendered page images via a vision model.
-4. It looks up which RTI record that scan already belongs to in the CMS.
-5. It shows every answer alongside the page number and the verbatim text it was read from.
+2. The system classifies it: real digital text, unreliable OCR text, or pure scan.
+3. It reads the answers from the file's own text where that is exact, otherwise from
+   rendered page images.
+4. It finds the CMS record that scan already belongs to.
+5. It shows each answer with its page number and the exact sentence it was read from.
 6. The reviewer corrects anything wrong and saves.
-7. An **unpublished draft** is created in the CMS, linked to the correct RTI record.
+7. An unpublished draft appears in the CMS. A person opens it and publishes.
 
-The reviewer then opens the draft in the CMS and publishes it.
+The system never publishes. It never overwrites or detaches existing data. If the target
+record already has an entry, it refuses to link and says so.
 
-**The system never publishes.** Every entry it creates is a draft. **It never overwrites or
-detaches existing data**: if the target record already has an entry, the tool refuses to
-link and says so, rather than silently reassigning the relation.
+Depth on the pipeline: [architecture and request path](docs/architecture.md) and the
+[module table](docs/modules.md).
 
-<!-- SCREENSHOT: review screen — the six answers with their source snippets, and the
-     matched-record banner above them. Place a PNG or GIF at docs/review-screen.png -->
+<!-- SCREENSHOT: the review screen, showing the six answers with their source snippets and
+     the matched-record banner. Place a PNG or GIF at docs/review-screen.png -->
+
+## Techniques and stack
+
+**Vision-language document extraction.** Rendered pages go to a multimodal model, so table
+layout is preserved rather than flattened by OCR into a character stream.
+
+**Schema-constrained generation.** The same machinery as function calling. The model is
+given a typed signature and generation is constrained to satisfy it.
+
+**Runtime schema generation.** The answer model is built from a config record rather than
+written by hand, so a new question set is configuration rather than code.
+
+**Provenance tracking with a four-state answer model.** Every answer carries its page
+number, the verbatim snippet and the unit as printed. The status distinguishes a value from
+three different kinds of absence.
+
+No model was trained or fine-tuned. Accuracy comes from constraints, validation and
+measurement, not from training.
+
+**Stack**
+
+- Python 3.12, pinned below 3.13 because the imaging and PDF libraries lag new releases
+- uv, for a lockfile so CI and the server install identical versions
+- FastAPI with Jinja templates, server-rendered; the review screen is a form
+- PyMuPDF, for page counting, text extraction and rendering from one library
+- Google Gemini via `google-genai`
+- Pydantic and pydantic-settings, for the answer schema and typed configuration
+- structlog, so a question about one document is answerable months later
+- tenacity, retrying only rate limits and upstream overload
+- Strapi v4, the client's existing CMS
 
 ## Design decisions
 
-### Three-way document classification, not a boolean text-layer check
+### Three-way document classification
 
-The obvious approach is to ask "does this PDF contain text?" and read it directly if so.
-That check is wrong, and the failure is silent.
+The obvious check is whether the PDF contains text, and read it directly if so. That fails
+silently. One reply carried over two thousand characters of OCR text baked in years earlier,
+which rendered "information" as `informatton`. A misspelled word is visible; a misread digit
+in a budget figure is not. So a file is classified NATIVE, OCR or NONE, and OCR text is
+discarded in favour of the page images.
 
-One reply in the corpus carried a text layer that looked entirely valid — over two thousand
-characters, well above any sensible threshold. It was OCR output someone had baked into a
-scan years earlier, and it was wrong: it rendered "information" as `informatton` and mangled
-a proper name. Misspelled words are visible and harmless. A misread digit is not: `19677`
-and `19577` look equally plausible, and the number in question was a state's annual prison
-budget. Nothing in the file records which characters the OCR was confident about.
+### Schema-constrained generation
 
-So the classifier distinguishes three cases. **NATIVE** — text produced by a word processor,
-exact, read it directly at no cost. **OCR** — text present but derived from a scan, therefore
-untrusted; ignore it and read the images instead. **NONE** — no text, read the images.
+The obvious approach is to ask for JSON and parse it. That fails in unbounded ways: prose
+wrapped around the JSON, a missing field, a number returned as `"approximately 450"`. Each
+becomes a parser special case. Instead the schema is attached to the request as a generation
+constraint, and the response is validated again locally before anything is written.
 
-The signal that separates NATIVE from OCR is whether a single image covers most of the page.
-A genuinely typed document has no photograph of itself inside it; a full-page image sitting
-behind a text layer is the fingerprint of a scan someone has run OCR over.
+### Per-field provenance
 
-### Reading rendered pages as images, not OCR text
+The obvious output is a value per question. A reviewer shown a bare number can only trust it
+or reopen the PDF, and the second is slower than transcribing by hand. So every answer
+carries its page number and the exact sentence it came from. That turns the reviewer's job
+from transcription into verification.
 
-The conventional approach is to OCR the document to a character stream and then locate
-values with regular expressions or positional heuristics. That flattens the page. These
-replies are tables, and a figure's meaning comes entirely from its row and column position —
-the same number means one institution's staff count or another's depending on which line it
-sits on. A character stream has no way to represent that.
+### The model may not calculate, convert or infer
 
-A vision-language model reads the rendered page directly, so the layout survives. That is
-what allows a value to be attributed to the correct institution in a multi-row table, and
-what makes a page number and a verbatim snippet meaningful when a reviewer checks it.
+The obvious behaviour is to be helpful and fill gaps. One reply consisted of a covering
+letter and ten pages of raw budget reports, with no total and no per-prisoner cost anywhere.
+Summing the ten per-head totals would have produced a plausible figure that appears nowhere
+in the document. Nothing in the database would distinguish it from a printed one. The system
+reported those fields as not provided.
 
-It is also why the OCR text layer described above is discarded rather than repaired. The
-problem is not only that individual characters are wrong. Even with every character correct,
-a linear stream cannot express which reply belongs to which question.
+### Drafts, not published entries
 
-### Schema-constrained generation, not prompt-and-parse
-
-The model is not asked to return JSON and then parsed. The answer schema is supplied to the
-API as a structured-output constraint, so the response is generated against the schema
-rather than merely encouraged to match it. This is the same underlying machinery as function
-calling or tool use: the model is given a typed signature and generation is constrained to
-satisfy it, rather than the schema being a suggestion in the prompt. The result is then
-validated a second time locally before anything is written.
-
-Prompt-and-parse fails in ways that are tedious and unbounded: prose wrapped around the
-JSON, a missing field, a number returned as `"approximately 450"`. Each becomes a parser
-special case. Constraining generation removes the class of failure instead of handling its
-instances, and the local validation means a malformed response fails loudly at the boundary
-rather than reaching the CMS.
-
-The schema and its per-field descriptions are generated programmatically from the Pydantic
-model rather than written by hand into the prompt. That is what makes roadmap item 2 a
-configuration change rather than a rewrite: a new question set becomes a new model
-definition, and the prompt, the response constraint and the CMS payload all follow from it.
-
-### Per-field provenance: page number, verbatim snippet, unit as printed
-
-Every extracted answer carries where it came from and the exact text it was read from.
-
-Review is not possible without this. A reviewer shown a bare number has two options: trust
-it, or open the PDF and search for it. The first defeats the purpose and the second is
-slower than transcribing by hand. Shown the number next to the sentence it came from, they
-can confirm or reject it in seconds. The provenance is what converts the reviewer's job from
-transcription to verification.
-
-The unit field exists for a specific hazard. One reply states its figures under a header
-indicating that amounts are given in lakhs; another states them in plain rupees. Stored as
-bare numbers they differ by a factor of a hundred thousand with nothing recording why. The
-system records the unit as printed and does not reconcile it — the discrepancy surfaces in
-review rather than settling silently into the data.
-
-### The model may not calculate, convert, or infer
-
-Three explicit prohibitions, each preventing a different failure.
-
-**No calculation.** Where a reply lists component amounts but no total, the total is left
-empty. A computed total is indistinguishable in the database from a printed one, and a
-reviewer has no way to tell that a figure was never in the document. In testing, a document
-gave a per-day cost against a question asking for a monthly cost; multiplying by thirty
-would have been trivial and wrong.
-
-**No unit conversion.** Converting "in lakh" to rupees requires assuming the header applies
-to that row, which is an inference about layout, not a reading of the page.
-
-**No inference of missing values.** An unanswered question is recorded as unanswered. The
-schema distinguishes four states — a value, "the department stated the data is
-unavailable", "the question was not answered at all", and "an answer was given but is not a
-single figure". Collapsing these loses information that cannot be recovered later, and the
-CMS itself already models the distinction.
-
-### Drafts, with a human approving
-
-Nothing the system produces is publicly visible. Entries are created unpublished and are
-invisible to the CMS's public API until a person publishes them.
-
-This is not caution for its own sake. The output is published as fact about public
-institutions, and the failure mode of an extraction system is not a crash — it is a
-plausible wrong number that nobody notices. A human approval step is the only control that
-catches that, and it is cheap because the provenance makes each check take seconds.
-
-### Why this is extraction, not retrieval-augmented generation
-
-RAG solves the problem of finding relevant material in a corpus too large to read. That
-problem does not exist here. The document is given — the reviewer just uploaded it — and it
-fits comfortably in the model's context, so there is nothing to retrieve.
-
-Adding retrieval would add a failure mode rather than remove one: a chunker that drops the
-page containing the answer produces a confident "not found" with no indication anything was
-missed. It would also destroy the structure the answers live in. These replies are tables,
-and a table's meaning depends on row and column alignment; chunking text linearly separates
-a figure from the row label that gives it meaning. Sending whole pages as images preserves
-the layout the model needs to read them correctly.
-
-## Corpus findings
-
-The design above came from examining real documents before writing extraction code. The
-findings changed several assumptions.
-
-**Three document types where one was expected.** The working assumption was that every reply
-is a scan. Of an initial sample, most were, but one was a digital document whose answers
-could be read exactly and free, and one was a scan carrying misleading OCR text. Each needs
-different handling.
-
-**Scan quality varies more than expected.** Rendered page resolution across the sample ran
-from roughly 139 to 531 DPI. The low end is below where small marks begin to break up. One
-document was 1-bit black and white — the scanner had already discarded every intermediate
-tone before the file was created, so no amount of processing can recover a faint digit.
-
-**Rotation metadata is unreliable.** One document's pages display correctly but the image
-stored inside them is rotated ninety degrees. Another has content that runs sideways within
-pages that are upright and correctly proportioned. In both cases the PDF's own rotation flag
-reads zero. Neither the metadata nor the page aspect ratio detects the problem — only
-rendering the page and looking at it does.
-
-That last finding removed work rather than adding it: because the renderer applies each
-page's display transform, pages come out upright for every document in the target set, and a
-planned orientation-correction stage was dropped as unnecessary. It would have been built on
-an assumption that the metadata was meaningful.
+The obvious step after extraction is to write the record. The failure mode here is not a
+crash, it is a plausible wrong number that nobody notices, and the output is published as
+fact about public institutions. So every entry is created unpublished and is invisible to
+the CMS's public API until a person publishes it.
 
 ## Accuracy
 
-Thirty of thirty fields were correct across five documents, verified by hand against the
-original scans. This included an eight-digit figure read from a photocopy, and, in three
-separate documents, itemised component amounts that summed exactly to the totals stated
-elsewhere in the same reply — an arithmetic cross-check that fails if any single digit is
-misread.
+Thirty of thirty fields were correct across five documents, checked by hand against the
+original scans. That included an eight-digit figure read from a photocopy. In three
+documents, itemised component amounts summed exactly to totals stated elsewhere in the same
+reply, a cross-check that fails if any single digit is misread.
 
-**This is a signal, not a measured accuracy rate.** Five documents hand-checked by the
-author is not an evaluation. The next step is a comparison against the existing verified
-entries already in the CMS, which are effectively free labelled data: run those documents
-through the pipeline and compare field by field at a scale where a rate means something. No
-percentage is claimed until that exists.
+This is a signal, not a measured accuracy rate. Five documents checked by the author is not
+an evaluation. The next step is a comparison against the entries already in the CMS, which
+are free labelled data. No percentage is claimed until that exists.
 
-One caveat that measurement will have to account for: the existing entries were transcribed
-by different people using different conventions, so disagreement with them will not always
-indicate an extraction error. Those discrepancies are useful output in their own right,
-because they surface inconsistencies in already-published data rather than only grading the
-extractor.
+See also the [corpus findings](docs/corpus-findings.md), which shaped the design.
 
-## Architecture
+## What it does not do
 
-```
-    upload
-      |
-      v
-  +--------------------------------------+
-  |  classify: NATIVE / OCR / NONE       |
-  +--------------------------------------+
-      |                          |
-   NATIVE                   OCR or NONE
-      |                          |
-      v                          v
-  read text                render pages to images
-      |                          |
-      +------------+-------------+
-                   |
-                   v
-      +-------------------------------+
-      |  schema-constrained model call |
-      |  -> answers + provenance       |
-      +-------------------------------+
-                   |
-                   v
-      +-------------------------------+
-      |  look up the target CMS record |
-      |  by the file's stored name     |
-      +-------------------------------+
-                   |
-                   v
-             review screen
-        (values, page, snippet, unit)
-                   |
-              human edits
-                   |
-                   v
-        unpublished draft in the CMS
-                   |
-           human publishes
-```
+- One question set of about thirty is implemented.
+- Hindi documents are deferred. Reading them works; the harder cases are still untested at
+  scale.
+- Documents below roughly 150 DPI are unreliable, and the system does not warn about it.
+- There is no automated evaluation harness.
+- It creates the answer record, but not the parent record, and does not attach the scan.
+  Both already exist in the workflow it plugs into.
 
-| Module | Responsibility |
-| --- | --- |
-| `pdf/reader.py` | Open a PDF, classify its text layer, render pages to images, fingerprint the file |
-| `extract/schema.py` | The answer shape: value, status, free text, page, snippet, unit |
-| `extract/prompts.py` | The extraction instructions, including the prohibitions above |
-| `extract/client.py` | The model call, structured-output constraint, token accounting, retry on transient failures |
-| `strapi/client.py` | Find the target CMS record, map answers to the CMS payload, create the draft |
-| `web/app.py` | Upload, review and confirmation screens; serves the uploaded scan back for checking |
-
-### What happens on upload
-
-**1. The file arrives.** The PDF is posted to `/extract`, read into memory, and a SHA-256
-fingerprint is taken of its bytes. That fingerprint is the filename it is stored under. Two
-consequences: the same document uploaded twice occupies the same path rather than
-duplicating, and the fingerprint is a safe identifier to put in a URL, which is how the
-scan is served back to the reviewer.
-
-**2. The PDF is inspected.** One pass with PyMuPDF collects, per page, the text, the
-rotation flag, the page dimensions and the bounding boxes of any images. The classification
-then applies in order:
-
-```
-total characters <= 100 x page count      ->  NONE    (no usable text)
-otherwise, any image covering >60% of a
-        page's area                       ->  OCR     (text present, but from a scan)
-otherwise                                 ->  NATIVE  (real digital text)
-```
-
-The character floor exists because scans often carry a stray watermark or page number;
-treating that as text would skip extraction on a document nobody can read.
-
-**3. The target record is looked up.** Before extraction, the uploaded filename is used to
-find where the scan already belongs. The extension is stripped and the stem is sent as a
-filter on the CMS's attached-media field. The CMS stores a sanitised version of every
-uploaded filename, and files downloaded from it carry exactly that name, so this is an exact
-match rather than fuzzy matching. If the stem finds nothing, the original filename is tried.
-One request returns the record, its identifying fields, and whether it already has an entry
-of this type.
-
-**4. Extraction.** NATIVE documents have their page text joined and sent as text. OCR and
-NONE documents have every page rendered to PNG at 200 DPI and sent as images in page order —
-roughly 1,100 tokens per page, against under a thousand for a short text document. Either
-way the request carries the instructions, the content, the schema as a generation
-constraint, and `temperature=0`. Transient failures — upstream overload, rate limiting — are
-retried with increasing waits up to five attempts; anything else fails immediately, because
-a bad key or a wrong model identifier will not succeed on retry. Token counts are logged on
-every call. The response is validated locally against the same schema before it goes
-further.
-
-**5. The review screen.** Six cards, each with an editable value, status and free-text field,
-and beneath them the page number, the unit as printed, and the verbatim snippet. Two hidden
-fields travel with the form: the document fingerprint, and the target record ID — and the
-record ID is included **only** when that record has no entry yet. Nothing is persisted at
-this stage; the extracted values live in the form itself.
-
-**6. Saving.** Each value is cleaned — separators and currency prefixes stripped, converted
-to a number or left empty if it will not convert — and the status is mapped to the exact
-string the CMS expects. The payload is assembled with the publish timestamp set to null,
-plus the record ID when present. If `DRY_RUN` is on, the payload is logged and nothing is
-sent. Otherwise one request creates the entry and returns its identifier, which becomes the
-link on the confirmation screen.
-
-A one-page scan takes about nine seconds end to end, most of it the model call; longer
-documents scale roughly with page count.
-
-Two guarantees in that path are structural rather than enforced by a check: the publish
-timestamp is always null, so nothing can be published, and the record ID is absent whenever
-linking would displace an existing entry, so nothing can be detached.
-
-## Stack
-
-- **Python 3.12** — pinned below 3.13 because the imaging and PDF libraries lag new releases.
-- **uv** — dependency resolution and a lockfile, so CI and the server install byte-identical versions.
-- **FastAPI + Jinja templates** — server-rendered pages; the review screen is a form, not an application.
-- **PyMuPDF** — page counting, text extraction and rendering from one library rather than three.
-- **Pydantic / pydantic-settings** — the answer schema and typed configuration validated at startup.
-- **structlog** — answers are logged with the document fingerprint and page, so a query about one entry is answerable after the fact.
-- **tenacity** — retries only transient failures (rate limits, upstream overload) and fails fast on everything else.
-- **Strapi v4** — the client's existing CMS; not a choice made here.
-
-## Known limitations
-
-- One question set of roughly thirty is implemented. The rest vary substantially in shape; some produce one record per document, others many.
-- Hindi and other non-Latin scripts are deferred. The documents exist in the corpus and are the hardest cases: Devanagari on a 1-bit photocopy, with content rotated within the page.
-- Documents below roughly 150 DPI are unreliable and the system does not currently warn about it.
-- There is no automated evaluation harness. Accuracy has been established by hand on a small sample.
-- The tool creates the answer record but does not create the parent RTI record or attach the scan; both already exist in the client's workflow.
-
-## Roadmap
-
-1. **Evaluation against existing verified entries.** Compare pipeline output with entries already transcribed by hand, per field, to produce a defensible accuracy figure and identify which fields are safe to pre-fill.
-2. **Schema generation at runtime.** Read the field definitions and question wording from the CMS rather than hardcoding them, so a new question set is configuration rather than code.
-3. **Multi-record documents.** Some replies answer for many institutions in one table, producing many records from one file. This needs list output, joining across several tables in the same document, and a table-based review screen.
-4. **Automated evaluation harness.** Ground-truth fixtures and a diff between runs, so a prompt change can be judged by measurement rather than by eye.
-5. **Self-consistency verification.** Numeric fields would be extracted twice in independent passes, with disagreement setting the value aside and flagging it for review rather than choosing between the two readings. Confidence scores are the model's own self-report and are not calibrated against measured error, whereas agreement between two independent passes is a stronger signal — and this is the control that catches a confident misreading in a misaligned table row.
+Planned work is in the [roadmap](docs/roadmap.md).
 
 ## Setup
 
@@ -347,28 +135,22 @@ Requires [uv](https://docs.astral.sh/uv/) and a reachable Strapi v4 instance.
 git clone <repository-url>
 cd rti-extract
 uv sync
-```
-
-Copy the example configuration and fill it in:
-
-```bash
 cp .env.example .env
 ```
+
+Fill in `.env`:
 
 | Variable | Purpose |
 | --- | --- |
 | `GEMINI_API_KEY` | API key for the vision model |
-| `GEMINI_MODEL` | Model identifier, for example a Gemini Flash model |
+| `GEMINI_MODEL` | Model identifier |
 | `STRAPI_BASE_URL` | CMS API root, for example `http://localhost:1337/api` |
 | `STRAPI_API_TOKEN` | CMS token with create permission on the target collection |
 | `WORK_DIR` | Where rendered pages and uploads are written. Default `./data/work` |
 | `LOG_LEVEL` | Default `INFO` |
-| `DRY_RUN` | Defaults to `true`. When true the CMS payload is logged and nothing is written |
+| `DRY_RUN` | Defaults to `true`. The payload is logged and nothing is written |
 
-`DRY_RUN` defaults to on. Leave it on for the first run, read the logged payload, and only
-then set it to `false`.
-
-Run the application:
+Leave `DRY_RUN` on for the first run, read the logged payload, then set it to `false`.
 
 ```bash
 uv run uvicorn rti_extractor.web.app:app --port 8017
@@ -376,30 +158,19 @@ uv run uvicorn rti_extractor.web.app:app --port 8017
 
 Open `http://localhost:8017`.
 
-Inspect a PDF without running extraction:
+Command line, without the web app:
 
 ```bash
-uv run python scripts/inspect_pdf.py /path/to/file.pdf
-uv run python scripts/inspect_pdf.py --render /path/to/file.pdf
+uv run python scripts/inspect_pdf.py /path/to/file.pdf     # classify and report
+uv run python scripts/extract_pdf.py /path/to/file.pdf     # extract and print JSON
 ```
 
-Run one document through extraction from the command line:
+Checks, all four of which CI runs on every push:
 
 ```bash
-uv run python scripts/extract_pdf.py /path/to/file.pdf
+uv run ruff check . && uv run ruff format . && uv run mypy src && uv run pytest
 ```
-
-## Development
-
-```bash
-uv run ruff check .
-uv run ruff format .
-uv run mypy src
-uv run pytest
-```
-
-CI runs all four on every push. `mypy` is configured in strict mode for `src`.
 
 Real reply documents contain personal data and must not be committed. `.gitignore` blocks
-`*.pdf`, `*.png`, `*.jpg` and `data/`, and pre-commit hooks reject large files and private
-keys. Test documents belong outside the repository.
+`*.pdf`, `*.png`, `*.jpg` and `data/`. Pre-commit hooks reject large files and private keys.
+Test documents belong outside the repository.
