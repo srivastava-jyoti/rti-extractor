@@ -3,7 +3,9 @@ from ..rti_type import RtiTypeDef
 SHARED_RULES = """\
 - Report only what is printed. Never infer, estimate, or work out a missing figure.
 - Never add numbers together. If a break-up is printed with no total, leave number null.
-- Copy the exact text you read into snippet, word for word.
+- Copy the exact text you read into snippet, word for word, in the script it is printed in.
+  Never translate snippet.
+- Write other_specify in English. If the reply is in another language, translate it there.
 - Give the 1-indexed page number you read each answer from.
 - Put the unit exactly as printed into unit_as_printed, for example "Rupees in lac".
   Never convert between units.
