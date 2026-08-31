@@ -109,14 +109,22 @@ the CMS's public API until a person publishes it.
 
 ## Accuracy
 
-Thirty of thirty fields were correct across five documents, checked by hand against the
-original scans. That included an eight-digit figure read from a photocopy. In three
-documents, itemised component amounts summed exactly to totals stated elsewhere in the same
-reply, a cross-check that fails if any single digit is misread.
+Thirty-six of thirty-six fields were correct across six documents, checked by hand against
+the original scans. That included a ten-digit figure read from a scan, where the digits, the
+same amount written out in words beside them, and a separate page stating it in different
+units all agreed. In three of them, itemised components summed exactly to totals
+stated elsewhere in the same reply, a cross-check that fails if any single digit is misread.
 
-This is a signal, not a measured accuracy rate. Five documents checked by the author is not
-an evaluation. The next step is a comparison against the entries already in the CMS, which
-are free labelled data. No percentage is claimed until that exists.
+Two more documents were run and are findings rather than scores. One contained none of the
+requested figures, having answered by attaching raw budget reports, and every field was
+correctly reported as not provided. One answers for around thirty institutions in a single
+table, which the current single-record schema cannot represent, and no value was invented to
+fill the gap.
+
+This is a signal, not a measured accuracy rate. Eight documents checked by the author is not
+an evaluation. The CMS already holds 103 entries transcribed by hand, which are the intended
+comparison set: running those documents through the pipeline and diffing field by field is
+what would produce a defensible number. No percentage is claimed until that exists.
 
 See also the [corpus findings](docs/corpus-findings.md), which shaped the design, and
 the [roadmap](docs/roadmap.md).
