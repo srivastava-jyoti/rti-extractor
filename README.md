@@ -95,10 +95,10 @@ from transcription into verification.
 ### The model may not calculate, convert or infer
 
 The obvious behaviour is to be helpful and fill gaps. One reply consisted of a covering
-letter and ten pages of raw budget reports, with no total and no per-prisoner cost anywhere.
-Summing the ten per-head totals would have produced a plausible figure that appears nowhere
-in the document. Nothing in the database would distinguish it from a printed one. The system
-reported those fields as not provided.
+letter and ten pages of raw budget reports, containing none of the figures the questions
+asked for. Summing the ten per-head totals would have produced a plausible number that
+appears nowhere in the document, and nothing downstream could tell it from a printed one.
+The system reported those fields as not provided.
 
 ### Drafts, not published entries
 
@@ -123,8 +123,8 @@ See also the [corpus findings](docs/corpus-findings.md), which shaped the design
 ## What it does not do
 
 - One question set of about thirty is implemented.
-- Hindi documents are deferred. Reading them works; the harder cases are still untested at
-  scale.
+- Devanagari reads correctly, including on a rotated 1-bit scan. What is untested is
+  scale: only two Hindi documents have been through the pipeline.
 - Documents below roughly 150 DPI are unreliable, and the system does not warn about it.
 - There is no automated evaluation harness.
 - It creates the answer record, but not the parent record, and does not attach the scan. It
