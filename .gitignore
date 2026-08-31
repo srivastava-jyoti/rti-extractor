@@ -7,6 +7,7 @@ __pycache__/
 data/
 *.pdf
 *.png
+!docs/review-screen.png
 *.jpg
 .pytest_cache/
 .mypy_cache/
