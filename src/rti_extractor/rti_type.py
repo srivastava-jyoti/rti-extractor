@@ -2,6 +2,9 @@
 
 Adding an RTI type means adding a definition below. The prompt, the answer schema, the
 CMS payload mapping and the review screen labels are all generated from it at runtime.
+
+The definition below is a generic example. Collection and field names are placeholders,
+and would be replaced with whatever a given CMS actually uses.
 """
 
 from dataclasses import dataclass
@@ -91,39 +94,39 @@ class RtiTypeDef:
         return {f.name: f"{i}. {f.label}" for i, f in enumerate(self.fields, start=1)}
 
 
-BUDGET_RTI = RtiTypeDef(
-    slug="budget-rti",
-    collection="budget-rtis",
+ANNUAL_BUDGET = RtiTypeDef(
+    slug="annual-budget",
+    collection="annual-budgets",
     subject="prison budgets",
     multi_record=False,
     fields=(
         FieldDef(
-            name="annual_budget_for_prisons",
+            name="total_budget",
             question="the total annual budget for prisons for the financial year",
             label="Total annual budget for prisons",
         ),
         FieldDef(
-            name="break_up_for_budget",
+            name="budget_breakdown",
             question="the major heads or break-up of that total annual budget",
             label="Major heads / break-up of that total",
         ),
         FieldDef(
-            name="sanctioned_individual_cost",
+            name="monthly_cost_sanctioned",
             question="the sanctioned cost of each prisoner, per month",
             label="Sanctioned cost per prisoner, per month",
         ),
         FieldDef(
-            name="annual_individual_cost_sanctioned",
+            name="annual_cost_sanctioned",
             question="the sanctioned cost of each prisoner, per year",
             label="Sanctioned cost per prisoner, per year",
         ),
         FieldDef(
-            name="incurred_individual_cost",
+            name="monthly_cost_incurred",
             question="the actual incurred cost of each prisoner, per month",
             label="Incurred cost per prisoner, per month",
         ),
         FieldDef(
-            name="annual_individual_cost_incurred",
+            name="annual_cost_incurred",
             question="the actual incurred cost of each prisoner, per year",
             label="Incurred cost per prisoner, per year",
         ),
@@ -134,7 +137,7 @@ BUDGET_RTI = RtiTypeDef(
     ),
 )
 
-REGISTRY: dict[str, RtiTypeDef] = {BUDGET_RTI.slug: BUDGET_RTI}
+REGISTRY: dict[str, RtiTypeDef] = {ANNUAL_BUDGET.slug: ANNUAL_BUDGET}
 
 
 def get_rti_type(slug: str) -> RtiTypeDef:

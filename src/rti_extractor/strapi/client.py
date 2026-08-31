@@ -8,10 +8,14 @@ from ..extract.schema import DataStatus
 from ..logging import log
 from ..rti_type import RtiTypeDef
 
+# Our internal status words mapped to the CMS enumeration. These are example values.
+# Copy them from the target CMS schema exactly, including any stray whitespace: a real
+# schema encountered during this work had a trailing space in one option, and the API
+# rejects anything that does not match character for character.
 STATUS_TO_STRAPI: dict[DataStatus, str] = {
-    DataStatus.AVAILABLE: "Data Available ",
-    DataStatus.NOT_AVAILABLE: "Data Not Available",
-    DataStatus.NOT_PROVIDED: "Data Not Provided",
+    DataStatus.AVAILABLE: "Value Provided",
+    DataStatus.NOT_AVAILABLE: "Value Not Available",
+    DataStatus.NOT_PROVIDED: "Not Answered",
     DataStatus.OTHER: "Other",
 }
 
