@@ -109,25 +109,41 @@ the CMS's public API until a person publishes it.
 
 ## Accuracy
 
-Thirty-six of thirty-six fields were correct across six documents, checked by hand against
-the original scans. That included a ten-digit figure read from a scan, where the digits, the
-same amount written out in words beside them, and a separate page stating it in different
-units all agreed. In three of them, itemised components summed exactly to totals
-stated elsewhere in the same reply, a cross-check that fails if any single digit is misread.
+Measured against entries already transcribed by hand in the CMS. Those values are the ground
+truth; the same source documents are run through the pipeline and compared field by field.
 
-Two more documents were run and are findings rather than scores. One contained none of the
-requested figures, having answered by attaching raw budget reports, and every field was
-correctly reported as not provided. One answers for around thirty institutions in a single
-table, which the current single-record schema cannot represent, and no value was invented to
-fill the gap.
+**Sixteen documents, ninety-six fields. The numbers agreed 95.8% of the time.**
 
-This is a signal, not a measured accuracy rate. Eight documents checked by the author is not
-an evaluation. The CMS already holds 103 entries transcribed by hand, which are the intended
-comparison set: running those documents through the pipeline and diffing field by field is
-what would produce a defensible number. No percentage is claimed until that exists.
+| Field | Number | Status |
+| --- | --- | --- |
+| Total annual budget | 100.0% | 93.8% |
+| Break-up of that total | 93.8% | 87.5% |
+| Sanctioned cost per month | 87.5% | 50.0% |
+| Sanctioned cost per year | 93.8% | 56.2% |
+| Incurred cost per month | 100.0% | 62.5% |
+| Incurred cost per year | 100.0% | 56.2% |
+| **All** | **95.8%** | **67.7%** |
 
-See also the [corpus findings](docs/corpus-findings.md), which shaped the design, and
-the [roadmap](docs/roadmap.md).
+The number column measures whether the document was read correctly. The status column also
+measures whether two people would classify the same answer the same way, and there were 31
+disagreements of which **24 are a single repeated pattern**: the human recorded `other` where
+the pipeline recorded `not_available`, on replies meaning "no per-prisoner budget is
+sanctioned". Both read the page identically. That is a house-style question, and the ground
+truth is not internally consistent on it either, having been transcribed by different people.
+
+The evaluation set is 103 documents. The run stopped at 16 on an API quota of twenty requests
+per day on the free tier. It is resumable, and this figure will be replaced by the full one
+when the rest have run.
+
+Separately, six documents were checked by hand against the original scans rather than against
+the CMS, and all thirty-six fields were correct. Two more are findings rather than scores: one
+contained none of the requested figures and every field was correctly reported as not
+provided; one answers for around thirty institutions in a single table that the current
+single-record schema cannot represent, and no value was invented to fill the gap.
+
+Full method and results: [evaluation](docs/evaluation.md). See also the
+[corpus findings](docs/corpus-findings.md), which shaped the design, and the
+[roadmap](docs/roadmap.md).
 
 ## Setup
 
