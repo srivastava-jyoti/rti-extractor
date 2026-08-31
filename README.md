@@ -118,19 +118,8 @@ This is a signal, not a measured accuracy rate. Five documents checked by the au
 an evaluation. The next step is a comparison against the entries already in the CMS, which
 are free labelled data. No percentage is claimed until that exists.
 
-See also the [corpus findings](docs/corpus-findings.md), which shaped the design.
-
-## What it does not do
-
-- One question set of about thirty is implemented.
-- Devanagari reads correctly, including on a rotated 1-bit scan. What is untested is
-  scale: only two Hindi documents have been through the pipeline.
-- Documents below roughly 150 DPI are unreliable, and the system does not warn about it.
-- There is no automated evaluation harness.
-- It creates the answer record, but not the parent record, and does not attach the scan. It
-  assumes both already exist.
-
-Planned work is in the [roadmap](docs/roadmap.md).
+See also the [corpus findings](docs/corpus-findings.md), which shaped the design, and
+the [roadmap](docs/roadmap.md).
 
 ## Setup
 
