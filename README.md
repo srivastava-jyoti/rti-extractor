@@ -3,10 +3,15 @@
 Reads scanned government Right to Information replies and creates structured, reviewable
 draft entries in a Strapi CMS.
 
+> An independent experiment in applying vision-language extraction to scanned government
+> documents. All collection names, field names and identifiers in this repository are
+> generic examples, not those of any particular system. No real reply documents are
+> included, and none should be: they contain personal data.
+
 ## The problem
 
-An Indian NGO publishes prison data obtained through Right to Information requests. It files
-a standard set of questions with prison departments, and each department replies with a
+Organisations that publish data obtained through Right to Information requests file a
+standard set of questions with government departments. Each department replies with a
 scanned document. The scans vary: photocopies, pages rotated inside an upright PDF, 1-bit
 black-and-white with no greyscale left, and occasionally a clean digital file.
 
@@ -61,7 +66,7 @@ measurement, not from training.
 - Pydantic and pydantic-settings, for the answer schema and typed configuration
 - structlog, so a question about one document is answerable months later
 - tenacity, retrying only rate limits and upstream overload
-- Strapi v4, the client's existing CMS
+- Strapi v4 as the target CMS, chosen here because it models drafts and publishing directly
 
 ## Design decisions
 
@@ -122,8 +127,8 @@ See also the [corpus findings](docs/corpus-findings.md), which shaped the design
   scale.
 - Documents below roughly 150 DPI are unreliable, and the system does not warn about it.
 - There is no automated evaluation harness.
-- It creates the answer record, but not the parent record, and does not attach the scan.
-  Both already exist in the workflow it plugs into.
+- It creates the answer record, but not the parent record, and does not attach the scan. It
+  assumes both already exist.
 
 Planned work is in the [roadmap](docs/roadmap.md).
 

@@ -33,7 +33,7 @@
     </div>
   {% elif form %}
     <div class="banner" style="background:#fdeeee;border-color:#e8bcbc;color:var(--danger)">
-      <strong>That form already has a Budget-RTI entry (#{{ form.existing_budget_rti_id }}).</strong>
+      <strong>That form already has an entry of this type (#{{ form.existing_entry_id }}).</strong>
       <p style="margin:6px 0 0;color:var(--ink)">{{ form.rti_name }}</p>
       <p style="margin:4px 0 0;font-size:13px;color:var(--muted)">
         Saving will create a new unlinked draft rather than replace the existing one.
@@ -94,7 +94,7 @@
 
     <button type="submit">Save these answers</button>
     <p class="sub" style="margin-top:14px">
-      Nothing is written to Strapi yet &mdash; that step comes next.
+      Saved as an unpublished draft. Nothing becomes public until someone publishes it.
     </p>
   </form>
 {% endblock %}

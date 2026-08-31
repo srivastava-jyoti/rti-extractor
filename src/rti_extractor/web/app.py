@@ -27,7 +27,7 @@ UPLOAD_DIR = WORK_DIR / "uploads"
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 # Only one RTI type is implemented. Type detection is not in scope yet.
-RTI_TYPE = get_rti_type("budget-rti")
+RTI_TYPE = get_rti_type("annual-budget")
 QUESTIONS: dict[str, str] = RTI_TYPE.labels
 
 setup_logging()
@@ -52,7 +52,7 @@ async def serve_pdf(sha: str) -> FileResponse:
 
 @app.post("/extract", response_class=HTMLResponse)
 async def do_extract(request: Request, pdf: UploadFile) -> HTMLResponse:
-    """Take an uploaded PDF, extract the six answers, and show them for checking."""
+    """Take an uploaded PDF, extract the answers, and show them for checking."""
     data = await pdf.read()
     digest = hashlib.sha256(data).hexdigest()
 
@@ -88,7 +88,7 @@ async def do_extract(request: Request, pdf: UploadFile) -> HTMLResponse:
 
 @app.post("/submit", response_class=HTMLResponse)
 async def submit(request: Request) -> HTMLResponse:
-    """Take the reviewer's corrected values and create a Budget-RTI draft."""
+    """Take the reviewer's corrected values and create a draft entry."""
     form = await request.form()
 
     rows: list[dict[str, str]] = []

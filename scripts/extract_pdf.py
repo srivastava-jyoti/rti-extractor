@@ -8,13 +8,13 @@ from rti_extractor.rti_type import get_rti_type
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Extract Budget RTI answers from a PDF.")
+    parser = argparse.ArgumentParser(description="Extract RTI answers from a PDF.")
     parser.add_argument("path", type=Path)
     parser.add_argument("--dpi", type=int, default=200)
     args = parser.parse_args()
 
     setup_logging()
-    rti_type = get_rti_type("budget-rti")
+    rti_type = get_rti_type("annual-budget")
 
     info = inspect(args.path)
     print(args.path.name)
